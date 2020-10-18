@@ -1,0 +1,162 @@
+---
+title: "Problem Set 2"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+knitr::opts_chunk$set(out.height = "\\textheight",  out.width = "\\textwidth",
+                      out.extra = "keepaspectratio=false")
+#knitr::opts_chunk$set(fig.width = 6, fig.height = 4, dpi = 100, render = knitr::normal_print)
+```
+
+## Title of your Report
+
+# Name(s) of Author(s) 
+# Date
+
+## Abstract
+
+Here is where you give a brief (one paragraph overview of your entire paper). This should include some background/introduction, some methodology, results and conclusions.
+
+## Introduction
+
+Here is where you should give insight into the setting and introduce the goal of the analysis. Here you can introduce ideas and basic concepts regarding the study setting and the potential model. Again, this is the introduction, so you should be explaining the importance of the work that is ahead and hopefully build some suspense for the reader. You can also highlight what will be included in the subsequent sections.
+
+## Data
+
+```{r, results = 'asis'}
+library(survey)
+library(tidyverse)
+library(jtools)
+library(forcats)
+
+gss <- read.csv("gss.csv")
+
+gss$education_level = case_when(
+        gss$education == "High school diploma or a high school equivalency certificate" ~ "High School",
+        gss$education == "Less than high school diploma or its equivalent" ~ "High School",
+        gss$education == "University certificate or diploma below the bachelor's level" ~ "College",
+        gss$education == "Trade certificate or diploma" ~ "College",
+        gss$education == "College, CEGEP or other non-university certificate or diploma" ~ "College",
+        gss$education == "Bachelor's degree (e.g. B.A., B.Sc., LL.B.)" ~ "University",
+        gss$education == "University certificate or diploma above the bachelor's level" ~ "University",
+        TRUE ~ "NA"
+)
+
+gss$Family_Income_Class = case_when(
+        gss$income_family == "$125,000 and more" ~ "Above 100k",
+        gss$income_family == "$100,000 to $ 124,999" ~ "Above 100k",
+        gss$income_family == "$75,000 to $99,999" ~ "75k to 100k",
+        gss$income_family == "$50,000 to $74,999" ~ "75k to 100k",
+        gss$income_family == "$25,000 to $49,999" ~ "Less than 50k",
+        gss$income_family == "Less than $25,000" ~ "Less than 50k",
+        TRUE ~ "Some other case"
+)
+
+gss$Children_Intent_Binary = case_when(
+        gss$future_children_intention == "Definitely yes" ~ "1",
+        gss$future_children_intention == "Probably yes" ~ "1",
+        gss$future_children_intention == "Probably not" ~ "0",
+        gss$future_children_intention == "No, definitely not" ~ "0",
+        TRUE ~ "NA"
+)
+
+gss$Marital_Simple = case_when(
+        gss$marital_status == "Single, never married" ~ "Single",
+        gss$marital_status == "Married" ~ "Married or common-law",
+        gss$marital_status == "Living common-law" ~ "Married or common-law",
+        gss$marital_status == "Divorced" ~ "Previously married",
+        gss$marital_status == "Separated" ~ "Previously married",
+        gss$marital_status == "Widowed" ~ "Previously married",
+        TRUE ~ "NA"
+)
+
+my_gss <- gss %>% 
+  filter(Children_Intent_Binary != "NA",
+         education_level != "NA")
+
+n = length(my_gss$caseid)
+N = 303022871
+
+fpc.srs = rep(N, n)
+
+GSS.design <- svydesign(id=~1, data = my_gss, fpc=fpc.srs)
+
+mysvylm <- svyglm(as.factor(Children_Intent_Binary) ~ 
+                    age + as.factor(education_level) + as.factor(Family_Income_Class) + 
+                    as.factor(sex) + as.factor(Marital_Simple),
+                  design = GSS.design, 
+                  family = "binomial")
+
+export_summs(mysvylm,
+               model.names = c("Marriage Intention Model"),
+               coefs = c("Age" = "age",
+                         "High school or below" = "as.factor(education_level)High School",
+                         "Bachelor's or higher" = "as.factor(education_level)University",
+                         "Above 100k" = "as.factor(Family_Income_Class)Above 100k",
+                         "Below 50k" = "as.factor(Family_Income_Class)Less than 50k",
+                         "Male" = "as.factor(sex)Male",
+                         "Previously married" = "as.factor(Marital_Simple)Previously married",
+                         "Single, never married" =  "as.factor(Marital_Simple)Single"
+                         ),
+               scale = TRUE, robust = TRUE, error_format = "({std.error})")
+
+plot_summs(mysvylm,
+           model.names = c("Marriage Intention Model"),
+               coefs = c("Age" = "age",
+                         "High school or below" = "as.factor(education_level)High School",
+                         "Bachelor's or higher" = "as.factor(education_level)University",
+                         "Above 100k" = "as.factor(Family_Income_Class)Above 100k",
+                         "Below 50k" = "as.factor(Family_Income_Class)Less than 50k",
+                         "Male" = "as.factor(sex)Male",
+                         "Previously married" = "as.factor(Marital_Simple)Previously married",
+                         "Single, never married" =  "as.factor(Marital_Simple)Single"
+                         ),
+               scale = TRUE, robust = TRUE, error_format = "({std.error})")
+
+```
+
+Introduce the data, explain why it was selected. Make sure to comment on important features and highlight any potential drawbacks to the data.
+- Key features, strengths, weaknesses
+- discuss what is good and bad about the questionnaire
+- discuss the methodology of how they find people to take the survey, population, frame, sample, sampling approach and its trade-offs
+- non response and cost
+
+## Model
+
+Introduce the selected model here. It is expected that you will use some mathematical notation here. If you do please ensure that all notation is explained. You may also want to discuss any special (hypothetical) cases of your model here, as well as any caveats.  
+- Define, explain each aspect of model, discuss priors and regularization, mention software, clear about model convergence, checks, and diagnostic issues
+- how do sampling and survey aspects assert themselves in modelling decisions you make?
+
+## Results
+
+Here you will include all results. This includes descriptive statistics, graphs, figures, tables, and model results. Please ensure that everything is well formatted and in a report style. You must also provide an explanation of the results in this section. You can overflow to an Appendix if needed. 
+
+Please ensure that everything is well labelled. So if you have multiple histograms and plots, calling them Figure 1, 2, 3, etc. and referencing them as Figure 1, Figure 2, etc. in your report will be expected. The reader should not get lost in a sea of information. Make sure to have the results be clean, well formatted and digestible.
+
+## Discussion
+
+Here you will discuss conclusions drawn from the results and comment on how it relates to the original goal of the study (which was specified in the Introduction). 
+- Focus on model results, interpret and explain in context
+- what do we learn aboutfrom having understood the model and its results? what caveats apply?
+- to what extent does your model represent the small world and the large world?
+
+
+# Weaknesses
+
+Here we discuss weaknesses of the study, data, analysis, etc. You can also discuss areas for improvement.
+
+# Next Steps
+
+Here you discuss subsequent work to be done after this report. This can include next steps in terms of statistical analysis (perhaps there is a more efficient algorithm available, or perhaps there is a caveat in the data that would allow for some new technique). Future steps should also be specified in terms of the study setting (eg. including a follow-up survey on something, or a subsequent study that would complement the conclusions of your report).
+
+
+## References
+
+
+
