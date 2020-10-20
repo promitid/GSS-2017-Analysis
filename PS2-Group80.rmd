@@ -1,0 +1,363 @@
+---
+title: "Age, education level, and sex impact intentions to have children in the future"
+subtitle: "Fitting logistic regression models using 2017 Family General Social Survey data"
+author: "Promiti Datta and Cathy Yang"
+date: "Monday, October 19th, 2020"
+abstract: This analysis of the 2017 Family General Social Survey data looks at different demographic and socioeconomic factors that affect Canadians’ attitudes towards having children. We use logistic regression to model whether a participant wants to have a child in the future or not, based on categorical and numeric answers to questions in the survey. Through our analyses we aim to identify the most important factors in this decision in order to understand historical changes in fertility rates and foresee future trends. 
+output: pdf_document
+---
+\pagenumbering{gobble}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+# Introduction
+
+The purpose of this project was to analyze the attitudes toward having children among men and women in Canada using survey data from the 2017 Family General Social Survey (GSS). Over the past few decades, the fertility rates have fallen below the replacement-level fertility rate of 2.0 children per woman [1], with the current rate being around 1.6 children per woman [2]. On the other hand, the number of women having their first child in their 30s has steadily increased, as we see women having fewer children and waiting longer before becoming mothers [2]. There are many barriers towards having children like rising prices of housing and childcare, as well as changing social attitudes around the necessity of having many children, particularly among women. Many of these factors are covered in the GSS survey, including questions related to whether the participant intends to have children in the future or not. In our assignment, we aim to model the intent for having children based on different demographic and socioeconomic factors of people living in Canada, to get a better idea what factors are most impactful in men and womens’ decisions to have children or not. 
+
+In this report, we will begin by introducing and discussing the data and what features we found most important, and then present a proposed logistic regression model of intention to have child in the future. We will then present the results of our analysis, discuss these results, and assess weaknesses and next steps of our analysis.
+
+# Data
+
+The data used for our model comes from the 2017 General Social Survey on Family, a cross-sectional survey conducted from February 2nd to November 30th, 2017, that sought to gather data about the composition, socio-economic conditions, and characteristics of families in Canada [3]. The methods of sampling and collection are described below [4]. 
+
+The survey’s target population was non-institutionalized persons above 15 years of age living in the 10 provinces of Canada. To carry out sampling, the 10 provinces were divided into strata, where many of the large Census Metropolitan Areas (CMAs) were each considered their own stratum. This included the cities of St. John’s, Halifax, Saint John, Montreal, Quebec City, Toronto, Ottawa, Hamilton, Winnipeg, Regina, Saskatoon, Calgary, Edmonton and Vancouver. Meanwhile, the remaining CMAs were located in Quebec, Ontario, and British Columbia, and were grouped into three strata according to province. Next, 10 more strata arose from the non-CMA areas within each of the 10 provinces, resulting in a total of 27 strata. 
+
+Next, the frame population was compiled using an Address Registrar of all dwellings within the provinces and a list of landline and cellular telephone numbers in use, gathered by Statistics Canada from various sources (telephone companies, Census population, etc.). The two components were used to create a record of households, where all telephone numbers associated with a valid address were assigned to a single household. The process of linking telephone numbers to households resulted in an 86% match rate, where the remaining 14% of phone numbers were not linked to an address, but were included in the frame as well. This was done to ensure that all households with telephone numbers had coverage. Once these records were formed, they served as the sampling unit for the survey frame.
+
+Each record was assigned to a stratum and simple random sampling without replacement (SRSWO) was carried out within each stratum. Eligible households were selected to participate in a computer-assisted telephone interview (CATI). For eligibility, households had to include at least one person 15 years of age or older. When selected, all the members of the household were rostered and a randomly selected member of the household was interviewed by phone. The capture and coding of questions relied on CATI, where responses to survey questions were captured as a valid range of codes and entered into computers as the interview was conducted. Edits and imputations were also made by the CATI software when out-of-range values or mandatory questions had a non-response. 
+
+The final response rate of the survey was 52.4%. We can assume this response rate was considered by sampling more respondents than needed as the target sample size of 20 000 was achieved, with the actual number of respondents totaling to 20 602. Non-response was also accounted for to represent non-responding telephone numbers when the weights of persons were being calculated (to be discussed further in the Model section). 
+
+A strength of this dataset is that it is a large, cross-sectional survey on the national scale that provides detailed data on the topic of interest. The variables provide rich data on the nature and origins of family composition, and insight into the motivations and reasoning of certain family characteristics that would not otherwise be captured through census data or be as representative as a smaller-scale study.
+
+Weaknesses in the data arise from sampling and non-sampling errors. Firstly, the sampling frame chosen excludes certain groups of people in the target population, such as households who do not have a telephone number, or the homeless population. Additionally, the data used to generate the survey frame may have resulted in under-coverage or over-coverage of certain records in the sampling frame, depending on the accuracy and availability of administrative data or billing records. Telephone numbers grouped to the same address may also have been erroneous, which may have led to unequal probabilities of selecting some households. 
+
+### Variables
+
+The variable we chose to model was “fi_110”, named “Intend to have child sometime in the future”. This survey question had 9 response options, where respondents shared their intentions to have children on a Likert scale. A similar variable existed in the dataset, named “Intend to have child within next 3 years”, which could have also been a viable variable to model. However, the former option was chosen, as we wanted to examine the intentions to have children on a long-term timeline in order to foresee future trends in reproduction intentions.
+
+The predictor variables that were of interest to us to model include age, sex, highest level of education, family income, and marital status, whose raw distribtuions can be found in **Appendix A**. These predictor variables, with the exception of age, are all categorical data. As such, we decided to re-classify the variables education, family income, and marital status into larger categories, that were more meaningful towards the interpretation of our model. The details of this categorization are described in the next section. 
+
+```{r, results='asis'}
+library(survey)
+library(tidyverse)
+library(jtools)
+library(huxtable)
+library(ggplot2)
+
+gss <- read.csv("gss.csv")
+
+gss$education_level = case_when(
+        gss$education == "High school diploma or a high school equivalency certificate" ~ "High School",
+        gss$education == "Less than high school diploma or its equivalent" ~ "High School",
+        gss$education == "University certificate or diploma below the bachelor's level" ~ "College",
+        gss$education == "Trade certificate or diploma" ~ "College",
+        gss$education == "College, CEGEP or other non-university certificate or diploma" ~ "College",
+        gss$education == "Bachelor's degree (e.g. B.A., B.Sc., LL.B.)" ~ "University",
+        gss$education == "University certificate or diploma above the bachelor's level" ~ "University",
+        TRUE ~ "NA"
+)
+
+gss$Family_Income_Class = case_when(
+        gss$income_family == "$125,000 and more" ~ "Above 100k",
+        gss$income_family == "$100,000 to $ 124,999" ~ "Above 100k",
+        gss$income_family == "$75,000 to $99,999" ~ "50k to 100k",
+        gss$income_family == "$50,000 to $74,999" ~ "50k to 100k",
+        gss$income_family == "$25,000 to $49,999" ~ "Less than 50k",
+        gss$income_family == "Less than $25,000" ~ "Less than 50k",
+        TRUE ~ "Some other case"
+)
+
+gss$Children_Intent_Binary = case_when(
+        gss$future_children_intention == "Definitely yes" ~ "1",
+        gss$future_children_intention == "Probably yes" ~ "1",
+        gss$future_children_intention == "Probably not" ~ "0",
+        gss$future_children_intention == "No, definitely not" ~ "0",
+        TRUE ~ "NA"
+)
+
+gss$Marital_Simple = case_when(
+        gss$marital_status == "Single, never married" ~ "Single",
+        gss$marital_status == "Married" ~ "Married or common-law",
+        gss$marital_status == "Living common-law" ~ "Married or common-law",
+        gss$marital_status == "Divorced" ~ "Previously married",
+        gss$marital_status == "Separated" ~ "Previously married",
+        gss$marital_status == "Widowed" ~ "Previously married",
+        TRUE ~ "NA"
+)
+
+my_gss <- gss %>% 
+  filter(Children_Intent_Binary != "NA")
+
+```
+
+\newpage
+# Model
+
+### Software
+Data cleaning and modelling were all carried out using RStudio 1.3, using the packages ```survey``` and ```tidyverse```. A basic cleaning of the GSS 2017 dataset was carried out using the “gss_cleaning.R” code acquired from the STA304 course website. Packages for creating plots and tables included  ```ggplot2``` and ```jtools```. 
+
+### Model choice 
+For our analysis, we chose a logistic regression model to understand how the factors age, sex marital status, education level, and family income affect one’s intention to have children in the future or not. The logistic regression model was the model of choice, as a linear regression model requires the variable to be numerical, while predictor variables can be categorical. As such, because our  variable of interest was categorical rather than numerical, a linear regression model would not apply in this setting.
+
+In order to use a logistic model, there were a few assumptions that our data had to satisfy. First, we assumed that our responses were independent from person to person, which was a fair assumption given the stratified random sampling techniques used in the survey. We also assumed that there was little to no multicolinearity between independent variables in our model, given that we chose factors that were not inherently dependent on each other. We had a large enough dataset to assume all sample size requirements were satisfied [5]. 
+
+### Re-categorizing Variables
+
+The response variable we chose comes from the variable “fi_110”, named “Intend to have child sometime in the future”. This survey question had 9 response options. The first 4 options, in order are: “Definitely yes”, “Probably yes”, “Probably no”, and “Definitely no”.  The remaining responses were either unsure, or non-responses due to a valid skip or refusal to answer the question. This variable was dichotomized into the outcomes “Yes” and “No”, where “Probably yes” and “Definitely yes” were grouped into the former, and “Probably no” and “Definitely no” were grouped into the latter. The remaining responses were excluded from the model. 
+
+The predictor variables we chose were all categorical, with the exception of age. Age was kept as numerical, as we sought to observe the change in log odds of intent to have children based on a unit increase in age, and did not want to create new arbitrary age groups. For the predictor variables of highest education level, marital status, sex, and family income, prior to creating dummy variables, we re-classified the objects into larger and more meaningful categories, to simplify variables that had  multiple levels and create more meaningful interpretation of our model.
+
+The education variable included 7 levels, that were re-categorized into 3 levels. The first level called “High School” includes the individuals whose highest education level was a high school diploma or less. The “College” level includes those who have a college, CEGEP, trade certificate, or any non-university diploma as their highest education level. The final level called “University” included those who have completed a Bachelor’s degree or higher. 
+
+Next, the marital status variable contained 6 responses: “Single, never married”, “Married, “Living common-law”, “Divorced”, “Separated”, “Widowed”. These were re-classified into 3 categories, called “Single”, “Married or common-law”, and “Previously married”, which includes those who were divorced, separated or widowed.
+
+Family income was also re-classified into 3 categories from 6 different responses. These levels are: “Below 50k”, “50k to 100k” and “Above 100k”. 
+
+Finally, the sex variable was kept as a categorical variable with levels Male and Female. 
+
+### Equation definition
+
+The proposed logistic model equation is outlined in **Equation 1** below:
+
+\begin{center}
+\textbf{Equation 1: Logistic model equation for intention to have children}
+\end{center} 
+$$ \log({\frac{intent\_to\_have\_children}{1-intent\_to\_have\_children}}) = \beta_0 - \beta_1\ age - \beta_2\ education_{HS} + \beta_3\ education_{NA} + \beta_4\ education_{UNI} $$ 
+$$- \beta_5\ income_{OVER100} + \beta_6\ income_{UNDER50} + \beta_7\ single + \beta_8\ prev\_married + \beta_9\ sex_{Male} $$
+, where
+$$intent\_to\_have\_children = \begin{array}{cc}
+  \{ & 
+    \begin{array}{cc}
+      0 & \textrm{person does not intend to have children in the future} \\
+      1 & \textrm{person intends to have children in the future}
+    \end{array} 
+\end{array}$$
+
+$\beta_0$ represents the intercept. The coefficients $\beta_1, \beta_2, ..., \beta_9$ are the respective coefficients for each term, which represent the change in log odds of a person's intention to have children.  
+
+The specific variables in the model are defined below:
+
+* $age$: Age of respondent 
+
+* $education_{HS}$: 1 if respondent's highest level of education was high school, 0 otherwise
+
+* $education_{NA}$: 1 if respondent did not report their highest level of education
+
+* $education_{UNI}$: 1 if respondent's highest level of education was university, 0 otherwise
+
+* $income_{OVER100}$: 1 if respondent has a family income of over $100,000 a year, 0 otherwise
+
+* $income_{UNDER50}$: 1 if respondent has a family income of under $50,000 a year, 0 otherwise
+
+* $single$: 1 if participant is single and never married, 0 otherwise.
+
+* $prev\_married$: 1 if participant is not married but was previously married, 0 otherwise.
+
+* $sex_{Male}$: 1 if respondent identifies as Male, 0 otherwise.
+
+### Sampling and survey assertions
+
+The ```survey``` package in R allowed us to establish the survey assertions outlined above, using the ```svydesign()``` function.
+
+```{r, echo = TRUE}
+n = 6575
+N = 303022871
+
+fpc.srs = rep(N, n)
+
+GSS.design <- svydesign(id=~1, weights = ~person_weight, data = my_gss, fpc=fpc.srs)
+```
+
+``` n ``` and ```N``` specify the sample and population sizes, respectively.
+
+```fpc.srs``` specifies the formula for finite population correction, given as the total target population for each sampling unit.
+
+Under the ``` GSS.design ``` formula, ``` id=~1 ``` specifies no clustering, while ``` weights = ~person_weight ``` specifies the sampling weights for each record, given by the ``` person_weights```  variable in the ``` gss``` dataset.
+
+The final logistic model is given in the code below, where the survey design is specified, and the predictor variables of sex, education, marital status, family income are established as dummy variables.
+
+```{r, echo = TRUE}
+mysvyglm <- svyglm(as.factor(Children_Intent_Binary) ~ 
+                    age + as.factor(education_level) + as.factor(Family_Income_Class) + 
+                    as.factor(sex) + as.factor(Marital_Simple),
+                  design = GSS.design, 
+                  family = "binomial")
+```
+
+
+# Results
+
+### Summary of predictor variables
+
+**Table 1** reports the distribution of the response variable, Intention to have children, based on the GSS survey design. As we can see, the proportion of people who intend to have children is 61.4%, while the proportion of people who don’t intend to have children is 38.6%. 
+
+```{r}
+#Population correction
+n = length(my_gss$caseid)
+N = 303022871
+fpc.srs = rep(N, n)
+
+GSS.design <- svydesign(id=~1, weights = ~person_weight, data = my_gss, fpc=fpc.srs)
+
+meanestimate = svymean(~Children_Intent_Binary, design = GSS.design) 
+meanest = hux(
+  "Intention to have children" = c("Yes","No"),
+  Mean = c(0.6141414, 0.38586),
+  SE = c(0.0083,0.0083)
+) 
+meanest %>% 
+  set_bold(1, everywhere) %>% 
+  set_bottom_border(1, everywhere) %>% 
+  set_caption("Survey-based estimates of intention to have children") 
+```
+
+
+### Model results
+
+**Table 2** presents the coefficients of the fitted logistic regression model, along with the standard errors, test statistic, and p-values. We found that the significant factors that influenced the response variable were age, single marital status, high school education, and male sex. Age, and high school education have negative coefficients, while male sex, and single marital status have significant positive coefficients. 
+
+```{r, results='asis', fig.cap= ""}
+n = length(my_gss$caseid)
+N = 303022871
+
+fpc.srs = rep(N, n)
+
+GSS.design <- svydesign(id=~1, weights = ~person_weight, data = my_gss, fpc=fpc.srs)
+
+mysvyglm <- svyglm(as.factor(Children_Intent_Binary) ~ 
+                    age + as.factor(education_level) + as.factor(Family_Income_Class) + 
+                    as.factor(sex) + as.factor(Marital_Simple),
+                  design = GSS.design, 
+                  family = "binomial")
+```
+
+\newpage
+```{r,results='asis'}
+export_summs(mysvyglm,
+               model.names = c("Intention to have children model"),
+               coefs = c("Intercept" = "(Intercept)",
+                         "Age" = "age",
+                         "High school or below" = "as.factor(education_level)High School",
+                         "Bachelor's or higher" = "as.factor(education_level)University",
+                         "Above 100k" = "as.factor(Family_Income_Class)Above 100k",
+                         "Below 50k" = "as.factor(Family_Income_Class)Less than 50k",
+                         "Male" = "as.factor(sex)Male",
+                         "Previously married" = "as.factor(Marital_Simple)Previously married",
+                         "Single, never married" =  "as.factor(Marital_Simple)Single",
+                         "Education level NA" = "as.factor(education_level)NA"), 
+             scale = FALSE,
+             robust = TRUE, error_format = "({std.error}), ({statistic}, p = {p.value})") %>% 
+  set_caption("Survey-based estimates of logistic model of intention to have children")
+```
+
+The beta estimates presented in table 2 can be plugged in the equation introduced earlier in Equation 1 , producing a final fitted logistic model shown in **Equation 2**: 
+
+\begin{center}
+\textbf{Equation 2: Logistic model equation for intention to have children with beta estimates}
+\vspace*{-7mm}
+\end{center}$$ \log({\frac{intent\_to\_have\_children}{1-intent\_to\_have\_children}}) = 4.53 - (0.20)\ age - (0.49)\ education_{HS} + (0.27)\ education_{NA} + (0.24)\ education_{UNI} $$
+$$- (0.10)\ income_{OVER100} + (0.21)\ income_{UNDER50} + (1.60)\ single + (0.12)\ prev\_married + (0.68)\ sex_{Male} $$
+
+
+# Discussion
+
+In summary, our analysis of the 2017 General Social Survey produced a logistic regression model that estimated the log odds of people’s choice to have children in the future, based on the predictor variables age, sex, education level, family income, and marital status. Our estimation methods accounted for the biases in the sampling design using a vector of weights for each person in our coefficient calculation, which was provided by the GSS survey data. 
+
+We found that with greater age, and an education at the level of high school or less had significant negative effects on the intention to have children, while male sex and being of single marital status had positive effects on the intention to have children. **Figure 1** plots the coefficient estimates for our logistic model. We can see that age has the smallest standard error, and has a negative coefficient estimate in the logistic model, which aligns with the model’s interpretation as older respondents may have a lower desire to have kids in the future. Next, the variable for education level at High school or below had a larger standard error range, however was significant enough to indicate that individuals with less education may be less intentioned to have children. The coefficient estimate that deviated the most from the rest of the group was the factor Single, never married, with a coefficient estimate of 1.43. This value agrees with the interpretation of the model, suggesting that those who are yet to be married are the ones who most anticipate having a child in the future. Family income did not appear to have a significant effect on one's intention to have children, nor did other levels of education or marital status.
+
+The generalizability of this model’s interpretations could be applied to the target population of non-institutionalized Canadians 15 years of age or older, however some caveats may limit its applicability. Firstly, we restricted the sample size of our model to only respondents who gave a definitive answer of yes or no to this question, excluding respondents who gave responses of “Unsure”, or refused to answer. As a result, our model may be subject to voluntary response bias, as the respondents who answered the question may have exhibited different traits than those who did not respond. Next, due to the survey design, the survey data excluded populations that may have been part of the target population, but were not included in the sampling frame. This may include households who did not have a telephone number associated with their address, or people who are living in precarious housing conditions. 
+\newpage
+\begin{center}
+\textbf{Figure 1: Plotted Coefficient estimates for logistic model of intention to have children}
+\end{center} 
+```{r}
+testplot = plot_summs(mysvyglm,
+           model.names = c("Intention to have children model"),
+               coefs = c("Age" = "age",
+                         "High school or below" = "as.factor(education_level)High School",
+                         "Bachelor's or higher" = "as.factor(education_level)University",
+                         "Above 100k" = "as.factor(Family_Income_Class)Above 100k",
+                         "Below 50k" = "as.factor(Family_Income_Class)Less than 50k",
+                         "Male" = "as.factor(sex)Male",
+                         "Previously married" = "as.factor(Marital_Simple)Previously married",
+                         "Single, never married" =  "as.factor(Marital_Simple)Single",
+                         "Education level NA" = "as.factor(education_level)NA"
+                         ), 
+           robust = TRUE, 
+           legend.title = "Intention to have children model")
+
+apatheme= theme_bw()+
+theme(panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    panel.border=element_blank(),
+    axis.line=element_line(),
+    text=element_text(family=),
+    legend.title=element_blank(), 
+    axis.text=element_text(size=),
+    axis.title=element_text(size=),
+    legend.text = element_text(size =))
+
+testplot  + apatheme + labs(x = "\n Coefficient Estimate \n ", y = NULL)
+```
+
+## Weaknesses
+
+In order to create a meaningful model for intent to have children, we had to carefully pick features in the survey data that were relevant to the purpose of the study and added value and accuracy to the model without overfitting it to our data. Most of the relevant features in the survey happened to be categorical, and many of the questions had a lot of different possible response categories. We found that some of the variables that we would have wanted to use, like living arrangement, had too many categories and were causing the model to not converge. For some of these categorical variables with lots of choices, such as education, we were able to merge categories down to 2 or 3 options and which we could then include in our model. There were other variables we were originally interested in that we just decided to discard because they were not necessary, like feelings on life. We also found some variables would really skew the model, such as the number of hours spent working in a week. This variable had a much larger coefficient than others, and considering that a lot of responses had “NA” in place of a numeric value, we did not think this factor was important enough to have such a large impact on our model.
+
+Overall, we were limited to a fairly small group of variables due to the fact that we manually selected which ones to include in the model. There were hundreds of variables in the survey that we could have considered, but we stuck to a few that were most relevant. Due to the scope of our work, we only considered a few different types of models before choosing logistic regression, but there are more complex models that could have modelled our data better. 
+
+
+## Next Steps
+
+Because we hand selected the features we wanted to use in our model based on a subset of all the features in the GSS dataset, we did not get to explore many of the possible variables that we could have used in the model. There are many different ways to algorithmically select the most significant features for using in models, which would have allowed us to consider a lot more feature combinations. For example, stepwise regression is a common technique in statistics for deciding whether to add or subtract variables from the set of explanatory variables. Doing this could potentially show significance in variables we would not have thought to include in our manual selection. 
+
+Another thing we could assess in the future is the predictive power of our model. Although it was not in the scope of our work, typically some sort of cross validation should be performed to ensure that the model is robust. This could be done simply by randomly splitting our data into training and test sets, where the coefficients in our model are generated from only the training set data and is run on test set data to compare model results with actual responses. This would show us if our model is overfit to the 2017 GSS data and does not produce accurate results otherwise, or if the type of model we chose has low predictive power overall. 
+
+# References
+
+[1] Russell, A. (2017, May 7). Here’s why Canadians are having fewer children. Global News. https://globalnews.ca/news/3429950/canada-fewer-children-census-216/
+
+
+[2] Government of Canada. (2014, November 13). Fertility: Fewer children, older moms. Statistics Canada. https://www150.statcan.gc.ca/n1/pub/11-630-x/11-630-x2014002-eng.htm
+
+
+[3] Government of Canada, S. C. (2016, December 20). General Social Survey—Family (GSS). https://www23.statcan.gc.ca/imdb/p2SV.pl?Function=getSurvey&SDDS=4501
+
+
+[4] Beaupré, P. (2020). GSS Public Use Microdata File Documentation and User’s Guide. Minister of Industry Statistics Canada. https://sda-artsci-utoronto-ca.myaccess.library.utoronto.ca/sdaweb/dli2/gss/gss31/gss31/more_doc/GSS31_User_Guide.pdf
+
+
+[5] Assumptions of Logistic Regression. (n.d.). Statistics Solutions. Retrieved October 19, 2020, from https://www.statisticssolutions.com/assumptions-of-logistic-regression/
+
+
+[6] Lumley, T. (2020). Package “survey.” https://cran.r-project.org/web/packages/survey/survey.pdf
+
+
+\newpage
+# Appendix
+
+## A: Raw distributions of predictor variables
+
+```{r,results='asis',fig.cap= "Category Distributions by Variable", fig.width=12, fig.height = 9}
+library(gridExtra)
+plot1 = ggplot(my_gss, aes(x = income_family)) + geom_bar(fill = "#0073C2FF", width=0.7) + ggtitle("Distribution of Family Income") + 
+  xlab("Family Income") + ylab("Frequency") + theme(axis.text.x=element_text(angle=45,hjust=1))
+
+plot2 = ggplot(my_gss, aes(x = education_level)) + geom_bar(fill = "#0073C2FF", width=0.7) + ggtitle("Distribution of Education Levels") + 
+  xlab("Education Level") + ylab("Frequency") + theme(axis.text.x=element_text(angle=45,hjust=1))
+
+plot3 = ggplot(my_gss, aes(x = sex)) + geom_bar(fill = "#0073C2FF", width=0.7) + ggtitle("Distribution of Responses by Gender") + 
+  xlab("Gender") + ylab("Frequency") + theme(axis.text.x=element_text(angle=45,hjust=1))
+
+plot4 = ggplot(my_gss, aes(x = age)) + geom_bar(fill = "#0073C2FF", width=2) + ggtitle("Distribution of Responses by Age") + 
+  xlab("Age") + ylab("Frequency") + theme(axis.text.x=element_text(angle=45,hjust=1))
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol=2, nrow=2)
+```
+
